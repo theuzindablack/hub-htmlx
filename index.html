@@ -1,135 +1,250 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-    <meta charset="UTF-8">
-    <title>P2P GLOBAL - SEM ERRO</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>NEXUS CREATE - P2P CORE</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/gun/gun.js"></script>
+    
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;900&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'monospace'],
+                    },
+                    colors: {
+                        nexus: {
+                            900: '#0f172a',
+                            800: '#1e293b',
+                            accent: '#38bdf8',
+                            glow: '#0ea5e9'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+
     <style>
-        :root { --neon: #00ff88; --bg: #050505; }
-        body { margin: 0; font-family: sans-serif; background: var(--bg); color: #fff; }
-        .container { max-width: 500px; margin: 0 auto; padding: 15px; }
-        .card { background: #111; border: 2px solid #222; padding: 15px; border-radius: 12px; margin-bottom: 20px; }
-        
-        textarea { width: 100%; height: 120px; background: #000; color: var(--neon); border: 1px solid #444; padding: 10px; border-radius: 8px; font-family: monospace; }
-        button { width: 100%; padding: 16px; background: var(--neon); color: #000; border: none; font-weight: bold; border-radius: 10px; cursor: pointer; margin-top: 10px; }
-        
-        .preview-box { background: #fff; height: 320px; width: 100%; border-radius: 10px; margin-top: 10px; border: 4px solid #222; overflow: hidden; }
-        iframe { width: 100%; height: 100%; border: none; }
-        
-        #status { font-size: 10px; color: var(--neon); text-align: center; margin-bottom: 10px; text-transform: uppercase; }
-        .hidden { display: none !important; }
+        body { background-color: #0f172a; color: #f8fafc; margin: 0; overflow-x: hidden; font-family: 'Inter', sans-serif; }
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-thumb { background: #38bdf8; border-radius: 10px; }
+        .bg-checkerboard {
+            background-image: linear-gradient(45deg, #1e293b 25%, transparent 25%), linear-gradient(-45deg, #1e293b 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #1e293b 75%), linear-gradient(-45deg, transparent 75%, #1e293b 75%);
+            background-size: 20px 20px;
+        }
+        .animate-fade-in { animation: fadeIn 0.4s ease-out forwards; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
     </style>
 </head>
 <body>
+    <div id="root"></div>
 
-<div class="container">
-    <div id="setup" class="card">
-        <h2 style="text-align:center; color:var(--neon)">P2P AUTO-CONECT</h2>
-        <div id="status">Iniciando Motor...</div>
-        <input id="userName" placeholder="TEU NOME" style="width:100%; padding:12px; background:#000; border:1px solid #444; color:#fff;">
-        <button onclick="entrar()">ENTRAR NA REDE AGORA</button>
-    </div>
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
 
-    <div id="app" class="hidden">
-        <div class="card">
-            <textarea id="editor" placeholder="<h1>CÓDIGO AQUI</h1>"></textarea>
-            <button onclick="enviar()">PUBLICAR PARA TODOS</button>
-        </div>
-        <div id="feed"></div>
-    </div>
-</div>
+        // Inicialização do Banco P2P Unificado
+        const gun = Gun(['https://gun-manhattan.herokuapp.com/gun', 'https://gundb-relay.herokuapp.com/gun']);
+        const db = gun.get('nexus_create_p2p_v1');
 
-<script>
-    let peer, conexoes = [], meuNome;
-    // IDs de 1 a 10 para criar uma malha de conexão automática
-    const SALAS_IDS = ["P2P-MASTER-1", "P2P-MASTER-2", "P2P-MASTER-3"]; 
+        const Icon = ({ name, size = 24, className = "" }) => {
+            useEffect(() => { if (window.lucide) window.lucide.createIcons(); }, [name]);
+            return <i data-lucide={name} style={{ width: size, height: size }} className={className}></i>;
+        };
 
-    function entrar() {
-        meuNome = document.getElementById('userName').value || "User";
-        
-        // Tenta pegar um dos IDs mestres. Se falhar, cria um aleatório e tenta conectar neles.
-        conectarRecursivo(0);
-    }
+        const App = () => {
+            const [view, setView] = useState('login');
+            const [user, setUser] = useState(null);
+            const [projects, setProjects] = useState([]);
+            const [activeProject, setActiveProject] = useState(null);
+            const [loadingIA, setLoadingIA] = useState(false);
 
-    function conectarRecursivo(index) {
-        if (index >= SALAS_IDS.length) {
-            // Se não conseguiu ser um dos IDs mestres, entra como cliente
-            peer = new Peer();
-            peer.on('open', (id) => {
-                document.getElementById('status').innerText = "CONECTADO COMO CLIENTE";
-                SALAS_IDS.forEach(target => conectarAoPeer(target));
-                abrirApp();
-            });
-            return;
-        }
+            // Escutar a rede P2P em tempo real
+            useEffect(() => {
+                const savedUser = JSON.parse(localStorage.getItem('nexus_session'));
+                if (savedUser) { setUser(savedUser); setView('dashboard'); }
 
-        // Tenta assumir um ID Master
-        peer = new Peer(SALAS_IDS[index]);
+                db.map().on((data, id) => {
+                    if (data && data.code) {
+                        setProjects(prev => {
+                            const filtered = prev.filter(p => p.id !== id);
+                            return [{...data, id}, ...filtered];
+                        });
+                    } else if (data === null) {
+                        setProjects(prev => prev.filter(p => p.id !== id));
+                    }
+                });
+            }, []);
 
-        peer.on('open', () => {
-            document.getElementById('status').innerText = "VOCÊ É O HOST " + (index + 1);
-            abrirApp();
-            // Tenta conectar nos outros mestres para sincronizar
-            SALAS_IDS.forEach(target => {
-                if(target !== SALAS_IDS[index]) conectarAoPeer(target);
-            });
-        });
+            const handleLogin = (name) => {
+                if(!name) return alert("Digite um nome");
+                const u = { 
+                    name, 
+                    uid: localStorage.getItem('nexus_uid') || 'u' + Math.random().toString(36).substr(2, 5) 
+                };
+                localStorage.setItem('nexus_uid', u.uid);
+                localStorage.setItem('nexus_session', JSON.stringify(u));
+                setUser(u);
+                setView('dashboard');
+            };
 
-        peer.on('error', (err) => {
-            if (err.type === 'unavailable-id') {
-                conectarRecursivo(index + 1); // Tenta o próximo ID mestre
-            }
-        });
+            const saveToP2P = (title, prompt, code) => {
+                const id = activeProject?.id || 'proj_' + Date.now();
+                db.get(id).put({
+                    title,
+                    description: prompt,
+                    code,
+                    author: user.name,
+                    uid: user.uid,
+                    type: 'web-app',
+                    timestamp: Date.now()
+                });
+                setView('dashboard');
+                setActiveProject(null);
+            };
 
-        peer.on('connection', (c) => {
-            conexoes.push(c);
-            setupConn(c);
-        });
-    }
+            const deleteProject = (id) => {
+                if(confirm("Deseja apagar este projeto da rede?")) db.get(id).put(null);
+            };
 
-    function conectarAoPeer(idAlvo) {
-        let c = peer.connect(idAlvo);
-        c.on('open', () => {
-            conexoes.push(c);
-            setupConn(c);
-        });
-    }
+            // Simulação Gemini (Conforme sua estrutura)
+            const generateAI = async () => {
+                const prompt = document.getElementById('proj-prompt').value;
+                if(!prompt) return;
+                setLoadingIA(true);
+                // Mock de resposta (Aqui você conectaria sua chave)
+                setTimeout(() => {
+                    const mock = `<!DOCTYPE html>\n<html>\n<body style="background:#0f172a;color:#38bdf8;display:flex;justify-content:center;align-items:center;height:100vh;font-family:sans-serif">\n<div style="text-align:center;border:2px solid #38bdf8;padding:20px;border-radius:20px">\n<h1>${prompt.toUpperCase()}</h1>\n<p>Gerado via Nexus AI</p>\n</div>\n</body>\n</html>`;
+                    document.getElementById('proj-code').value = mock;
+                    document.getElementById('preview-frame').srcdoc = mock;
+                    setLoadingIA(false);
+                }, 2000);
+            };
 
-    function setupConn(c) {
-        c.on('data', (data) => renderizar(data));
-    }
+            // --- TELAS ---
+            if (view === 'login') return (
+                <div className="min-h-screen flex items-center justify-center p-6 bg-nexus-900">
+                    <div className="w-full max-w-md bg-nexus-800 border border-slate-700 rounded-3xl p-10 shadow-2xl animate-fade-in text-center">
+                        <Icon name="layers" size={48} className="text-nexus-accent mx-auto mb-4" />
+                        <h1 className="text-3xl font-black mb-8">NEXUS CREATE</h1>
+                        <input id="login-name" type="text" placeholder="Seu Apelido" className="w-full bg-nexus-900 border border-slate-700 p-4 rounded-xl mb-6 outline-none focus:border-nexus-accent text-white" />
+                        <button onClick={() => handleLogin(document.getElementById('login-name').value)} className="w-full bg-nexus-accent text-nexus-900 h-14 rounded-xl font-bold hover:scale-105 transition-all">Acessar Rede P2P</button>
+                    </div>
+                </div>
+            );
 
-    function abrirApp() {
-        document.getElementById('setup').classList.add('hidden');
-        document.getElementById('app').classList.remove('hidden');
-    }
+            if (view === 'dashboard') return (
+                <div className="max-w-7xl mx-auto p-8 animate-fade-in">
+                    <header className="flex flex-col md:flex-row justify-between items-center bg-white/5 p-8 rounded-3xl border border-white/10 mb-10 gap-4">
+                        <div className="flex items-center gap-4">
+                            <div className="w-12 h-12 bg-nexus-accent rounded-full flex items-center justify-center text-nexus-900 font-black">{user.name[0]}</div>
+                            <div>
+                                <h2 className="text-xl font-bold">Olá, {user.name}</h2>
+                                <p className="text-xs text-slate-500">Rede Nexus Ativa</p>
+                            </div>
+                        </div>
+                        <div className="flex gap-3">
+                            <button onClick={() => {setActiveProject(null); setView('create')}} className="bg-nexus-accent text-nexus-900 px-6 py-3 rounded-xl font-bold flex items-center gap-2 hover:brightness-110 transition-all">
+                                <Icon name="plus" size={20}/> Criar Novo
+                            </button>
+                            <button onClick={() => {localStorage.removeItem('nexus_session'); setView('login')}} className="p-3 bg-slate-800 rounded-xl hover:bg-red-500/20 text-red-400 transition-all"><Icon name="log-out" size={20}/></button>
+                        </div>
+                    </header>
 
-    function enviar() {
-        const codigo = document.getElementById('editor').value;
-        if (!codigo) return;
-        const pacote = { id: Date.now(), autor: meuNome, html: codigo };
-        renderizar(pacote);
-        conexoes.forEach(c => { if (c.open) c.send(pacote); });
-        document.getElementById('editor').value = "";
-    }
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        {projects.map(p => (
+                            <div key={p.id} className="bg-nexus-800 border border-slate-700 rounded-2xl overflow-hidden group hover:border-nexus-accent transition-all flex flex-col shadow-lg">
+                                <div className="p-6 flex-1">
+                                    <div className="flex justify-between items-start mb-4">
+                                        <span className="text-[10px] bg-nexus-accent/10 text-nexus-accent px-2 py-1 rounded font-bold uppercase">{p.type}</span>
+                                        <span className="text-[10px] text-slate-500 font-mono">@{p.author}</span>
+                                    </div>
+                                    <h3 className="text-lg font-bold text-white mb-2 truncate">{p.title}</h3>
+                                    <p className="text-slate-400 text-sm line-clamp-2">{p.description}</p>
+                                </div>
+                                <div className="p-4 bg-black/20 border-t border-slate-700 flex gap-2">
+                                    <button onClick={() => {setActiveProject(p); setView('play')}} className="flex-1 bg-nexus-accent text-nexus-900 py-2 rounded-lg font-black text-xs hover:brightness-110">ABRIR</button>
+                                    {p.uid === user.uid && (
+                                        <>
+                                            <button onClick={() => {setActiveProject(p); setView('create')}} className="p-2 text-slate-400 hover:text-white"><Icon name="edit-3" size={18}/></button>
+                                            <button onClick={() => deleteProject(p.id)} className="p-2 text-slate-500 hover:text-red-400"><Icon name="trash-2" size={18}/></button>
+                                        </>
+                                    )}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            );
 
-    function renderizar(data) {
-        if (document.getElementById('post-' + data.id)) return;
-        const feed = document.getElementById('feed');
-        const div = document.createElement('div');
-        div.id = 'post-' + data.id;
-        div.className = 'card';
-        div.innerHTML = `<small style="color:var(--neon)">@${data.autor}</small>
-                         <div class="preview-box"><iframe id="frame-${data.id}"></iframe></div>`;
-        feed.prepend(div);
+            if (view === 'create') return (
+                <div className="h-screen flex flex-col p-6 animate-fade-in bg-nexus-900 overflow-hidden">
+                    <header className="flex justify-between items-center mb-6 shrink-0">
+                        <div className="flex items-center gap-4">
+                            <button onClick={() => setView('dashboard')} className="p-2 hover:bg-slate-800 rounded-full text-white"><Icon name="arrow-left"/></button>
+                            <input id="proj-title" defaultValue={activeProject?.title || "Novo Projeto"} className="bg-transparent text-xl font-black border-b border-transparent focus:border-nexus-accent outline-none text-white w-64" />
+                        </div>
+                        <button onClick={() => {
+                            const t = document.getElementById('proj-title').value;
+                            const d = document.getElementById('proj-prompt').value;
+                            const c = document.getElementById('proj-code').value;
+                            saveToP2P(t, d, c);
+                        }} className="bg-nexus-accent text-nexus-900 px-6 py-2 rounded-xl font-bold flex items-center gap-2">
+                            <Icon name="save" size={20}/> Salvar na Rede
+                        </button>
+                    </header>
 
-        setTimeout(() => {
-            const frame = document.getElementById('frame-' + data.id);
-            const doc = frame.contentWindow.document;
-            doc.open(); doc.write(data.html); doc.close();
-        }, 150);
-    }
-</script>
+                    <div className="flex-1 grid grid-cols-1 lg:grid-cols-2 gap-8 min-h-0">
+                        <div className="flex flex-col gap-6 overflow-y-auto pr-2">
+                            <div className="bg-nexus-800 p-6 rounded-3xl border border-slate-700 shadow-xl">
+                                <textarea id="proj-prompt" defaultValue={activeProject?.description || ""} placeholder="Descreva sua ideia para a IA..." className="w-full h-24 bg-black/40 border border-slate-700 p-4 rounded-xl text-white outline-none focus:border-nexus-accent resize-none mb-4"></textarea>
+                                <button onClick={generateAI} disabled={loadingIA} className="w-full bg-white/5 border border-white/10 h-12 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-white/10 transition-all">
+                                    <Icon name="wand-2" size={20} className={loadingIA ? 'animate-spin' : ''}/> 
+                                    {loadingIA ? 'PROCESSANDO...' : 'GERAR COM IA'}
+                                </button>
+                            </div>
+                            <div className="bg-nexus-800 rounded-3xl border border-slate-700 overflow-hidden flex flex-col flex-1">
+                                <div className="bg-slate-800 px-4 py-2 border-b border-slate-700 text-[10px] font-mono text-slate-400">EDITOR DE CÓDIGO</div>
+                                <textarea id="proj-code" defaultValue={activeProject?.code || ""} onChange={(e) => document.getElementById('preview-frame').srcdoc = e.target.value} className="w-full flex-1 bg-transparent p-4 text-nexus-accent font-mono text-xs outline-none resize-none"></textarea>
+                            </div>
+                        </div>
+
+                        <div className="bg-black rounded-3xl border border-slate-700 overflow-hidden flex flex-col shadow-2xl">
+                            <div className="p-3 bg-slate-800 text-[10px] font-black text-slate-500 flex justify-between uppercase tracking-widest">Live Preview <Icon name="play" size={12}/></div>
+                            <div className="flex-1 bg-checkerboard relative">
+                                <iframe id="preview-frame" srcDoc={activeProject?.code || ""} className="w-full h-full border-0" sandbox="allow-scripts allow-same-origin" />
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+
+            if (view === 'play') return (
+                <div className="fixed inset-0 bg-black z-[100] flex flex-col animate-fade-in">
+                    <header className="p-4 bg-nexus-900 border-b border-white/10 flex justify-between items-center">
+                        <div className="flex items-center gap-4">
+                            <button onClick={() => setView('dashboard')} className="p-2 hover:bg-slate-800 rounded-full text-white"><Icon name="arrow-left"/></button>
+                            <h2 className="font-black text-white uppercase tracking-tighter">{activeProject.title} <span className="text-nexus-accent text-xs ml-2">by @{activeProject.author}</span></h2>
+                        </div>
+                        <button onClick={() => setView('dashboard')} className="p-2 text-slate-400 hover:text-white"><Icon name="x" size={28}/></button>
+                    </header>
+                    <iframe srcDoc={activeProject.code} className="flex-1 w-full border-0" sandbox="allow-scripts allow-same-origin" />
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
 </body>
 </html>
