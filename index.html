@@ -1,211 +1,135 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-<meta charset="UTF-8">
-<title>HTMLX Hub</title>
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<style>
-*{box-sizing:border-box}
-body{margin:0;font-family:Arial;background:#0b0b0b;color:#fff}
-header{background:#111;padding:12px;display:flex;justify-content:space-between;align-items:center}
-button{padding:8px 14px;border:0;border-radius:6px;background:#27ae60;color:#fff;cursor:pointer}
-button.alt{background:#3498db}
-button.red{background:#e74c3c}
-input,textarea{width:100%;background:#111;color:#0f0;border:1px solid #333;border-radius:6px;padding:8px}
-textarea{height:130px}
-.box{border:1px solid #333;border-radius:10px;padding:12px;margin:10px}
-.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-iframe{width:100%;height:300px;border:1px solid #333;background:#fff}
-.card{border:1px solid #333;border-radius:10px;padding:10px;margin-bottom:10px}
-img{max-width:100%;border-radius:8px}
-small{opacity:.7}
-</style>
+    <meta charset="UTF-8">
+    <title>P2P GLOBAL - SEM ERRO</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <style>
+        :root { --neon: #00ff88; --bg: #050505; }
+        body { margin: 0; font-family: sans-serif; background: var(--bg); color: #fff; }
+        .container { max-width: 500px; margin: 0 auto; padding: 15px; }
+        .card { background: #111; border: 2px solid #222; padding: 15px; border-radius: 12px; margin-bottom: 20px; }
+        
+        textarea { width: 100%; height: 120px; background: #000; color: var(--neon); border: 1px solid #444; padding: 10px; border-radius: 8px; font-family: monospace; }
+        button { width: 100%; padding: 16px; background: var(--neon); color: #000; border: none; font-weight: bold; border-radius: 10px; cursor: pointer; margin-top: 10px; }
+        
+        .preview-box { background: #fff; height: 320px; width: 100%; border-radius: 10px; margin-top: 10px; border: 4px solid #222; overflow: hidden; }
+        iframe { width: 100%; height: 100%; border: none; }
+        
+        #status { font-size: 10px; color: var(--neon); text-align: center; margin-bottom: 10px; text-transform: uppercase; }
+        .hidden { display: none !important; }
+    </style>
 </head>
 <body>
 
-<header>
- <b>🚀 HTMLX Hub</b>
- <div>
-  <button onclick="UI.show('editor')">Criar</button>
-  <button class="alt" onclick="UI.show('feed')">Marketplace</button>
-  <button class="red" onclick="logout()">Sair</button>
- </div>
-</header>
+<div class="container">
+    <div id="setup" class="card">
+        <h2 style="text-align:center; color:var(--neon)">P2P AUTO-CONECT</h2>
+        <div id="status">Iniciando Motor...</div>
+        <input id="userName" placeholder="TEU NOME" style="width:100%; padding:12px; background:#000; border:1px solid #444; color:#fff;">
+        <button onclick="entrar()">ENTRAR NA REDE AGORA</button>
+    </div>
 
-<div id="view"></div>
+    <div id="app" class="hidden">
+        <div class="card">
+            <textarea id="editor" placeholder="<h1>CÓDIGO AQUI</h1>"></textarea>
+            <button onclick="enviar()">PUBLICAR PARA TODOS</button>
+        </div>
+        <div id="feed"></div>
+    </div>
+</div>
 
 <script>
-/* ===================================================
-   SISTEMA DE CONTA (LOCAL – PRONTO PARA FIREBASE)
-=================================================== */
-let user = JSON.parse(localStorage.getItem("htmlx_user"));
-if(!user){
- const name = prompt("Seu nome:");
- user = {id:Date.now(),name,pro:false};
- localStorage.setItem("htmlx_user",JSON.stringify(user));
-}
-function logout(){
- localStorage.removeItem("htmlx_user");
- location.reload();
-}
+    let peer, conexoes = [], meuNome;
+    // IDs de 1 a 10 para criar uma malha de conexão automática
+    const SALAS_IDS = ["P2P-MASTER-1", "P2P-MASTER-2", "P2P-MASTER-3"]; 
 
-/* ===================================================
-   BANCO (LOCAL → SUBSTITUÍVEL POR FIREBASE)
-=================================================== */
-const DB={
- apps:JSON.parse(localStorage.getItem("htmlx_apps"))||[],
- save(){localStorage.setItem("htmlx_apps",JSON.stringify(this.apps))}
-};
+    function entrar() {
+        meuNome = document.getElementById('userName').value || "User";
+        
+        // Tenta pegar um dos IDs mestres. Se falhar, cria um aleatório e tenta conectar neles.
+        conectarRecursivo(0);
+    }
 
-/* ===================================================
-   HTMLX – LINGUAGEM OFICIAL
-=================================================== */
-function parseHTMLX(code){
- let r={html:"",css:"",js:"",meta:{}},mode="";
- code.split("\n").forEach(l=>{
-  if(l.startsWith("@")) mode=l.replace("@","").trim();
-  else{
-   if(mode==="HTML") r.html+=l+"\n";
-   if(mode==="CSS") r.css+=l+"\n";
-   if(mode==="JS") r.js+=l+"\n";
-   if(mode==="META"){
-    let p=l.split(":");
-    if(p[1]) r.meta[p[0].trim()]=p[1].trim();
-   }
-  }
- });
- return r;
-}
+    function conectarRecursivo(index) {
+        if (index >= SALAS_IDS.length) {
+            // Se não conseguiu ser um dos IDs mestres, entra como cliente
+            peer = new Peer();
+            peer.on('open', (id) => {
+                document.getElementById('status').innerText = "CONECTADO COMO CLIENTE";
+                SALAS_IDS.forEach(target => conectarAoPeer(target));
+                abrirApp();
+            });
+            return;
+        }
 
-/* ===================================================
-   UI
-=================================================== */
-const UI={
- show(v,data){
-  view.innerHTML=Views[v](data);
- }
-};
+        // Tenta assumir um ID Master
+        peer = new Peer(SALAS_IDS[index]);
 
-/* ===================================================
-   VIEWS
-=================================================== */
-const Views={
+        peer.on('open', () => {
+            document.getElementById('status').innerText = "VOCÊ É O HOST " + (index + 1);
+            abrirApp();
+            // Tenta conectar nos outros mestres para sincronizar
+            SALAS_IDS.forEach(target => {
+                if(target !== SALAS_IDS[index]) conectarAoPeer(target);
+            });
+        });
 
- feed:()=>`
- <div class="box">
-  <h2>🌍 Marketplace</h2>
-  ${DB.apps.map((a,i)=>`
-   <div class="card">
-    ${a.cover?`<img src="${a.cover}">`:""}
-    <b>${a.meta.title||"Sem título"}</b><br>
-    <small>Autor: ${a.author}</small><br>
-    ❤️ ${a.likes}
-    <button onclick="like(${i})">Curtir</button>
-    <button onclick="openApp(${i})">Abrir</button>
-   </div>
-  `).join("")}
- </div>
- `,
+        peer.on('error', (err) => {
+            if (err.type === 'unavailable-id') {
+                conectarRecursivo(index + 1); // Tenta o próximo ID mestre
+            }
+        });
 
- editor:()=>`
- <div class="box">
-  <h2>✍️ Editor HTMLX</h2>
+        peer.on('connection', (c) => {
+            conexoes.push(c);
+            setupConn(c);
+        });
+    }
 
-  <textarea id="code">@META
-title: Meu App HTMLX
+    function conectarAoPeer(idAlvo) {
+        let c = peer.connect(idAlvo);
+        c.on('open', () => {
+            conexoes.push(c);
+            setupConn(c);
+        });
+    }
 
-@HTML
-<h1>Hello HTMLX</h1>
+    function setupConn(c) {
+        c.on('data', (data) => renderizar(data));
+    }
 
-@CSS
-body{background:#222;color:white;text-align:center}
+    function abrirApp() {
+        document.getElementById('setup').classList.add('hidden');
+        document.getElementById('app').classList.remove('hidden');
+    }
 
-@JS
-console.log("Rodando HTMLX")</textarea>
+    function enviar() {
+        const codigo = document.getElementById('editor').value;
+        if (!codigo) return;
+        const pacote = { id: Date.now(), autor: meuNome, html: codigo };
+        renderizar(pacote);
+        conexoes.forEach(c => { if (c.open) c.send(pacote); });
+        document.getElementById('editor').value = "";
+    }
 
-  <input type="file" id="cover">
-  <br><br>
-  <button onclick="run()">Executar</button>
-  <button onclick="publish()">Publicar</button>
-  <button onclick="exportApp()">Exportar HTML</button>
+    function renderizar(data) {
+        if (document.getElementById('post-' + data.id)) return;
+        const feed = document.getElementById('feed');
+        const div = document.createElement('div');
+        div.id = 'post-' + data.id;
+        div.className = 'card';
+        div.innerHTML = `<small style="color:var(--neon)">@${data.autor}</small>
+                         <div class="preview-box"><iframe id="frame-${data.id}"></iframe></div>`;
+        feed.prepend(div);
 
-  <iframe id="preview"></iframe>
- </div>
- `,
-
- viewer:(a)=>`
- <div class="box">
-  <h2>${a.meta.title}</h2>
-  ${a.cover?`<img src="${a.cover}">`:""}
-  <iframe sandbox srcdoc="
-   <style>${a.css}</style>
-   ${a.html}
-   <script>${a.js}<\/script>
-  "></iframe>
-
-  <h3>💬 Comentários</h3>
-  ${(a.comments||[]).map(c=>`<div class="card"><b>${c.user}</b>: ${c.text}</div>`).join("")}
-  <input id="msg" placeholder="Comentar">
-  <button onclick="comment(${DB.apps.indexOf(a)})">Enviar</button>
- </div>
- `
-};
-
-/* ===================================================
-   AÇÕES
-=================================================== */
-function run(){
- const p=parseHTMLX(code.value);
- preview.srcdoc=`<style>${p.css}</style>${p.html}<script>${p.js}<\/script>`;
-}
-
-function publish(){
- const p=parseHTMLX(code.value);
- const file=cover.files[0];
- if(file){
-  const r=new FileReader();
-  r.onload=()=>saveApp(p,r.result);
-  r.readAsDataURL(file);
- }else saveApp(p,null);
-}
-
-function saveApp(p,cover){
- DB.apps.push({
-  ...p,
-  cover,
-  author:user.name,
-  likes:0,
-  comments:[]
- });
- DB.save();
- UI.show("feed");
-}
-
-function openApp(i){UI.show("viewer",DB.apps[i]);}
-function like(i){DB.apps[i].likes++;DB.save();UI.show("feed");}
-
-function comment(i){
- const msg=document.getElementById("msg").value;
- if(!msg) return;
- DB.apps[i].comments.push({user:user.name,text:msg});
- DB.save();
- openApp(i);
-}
-
-function exportApp(){
- const p=parseHTMLX(code.value);
- const html=`<!DOCTYPE html><html><head><style>${p.css}</style></head><body>${p.html}<script>${p.js}<\/script></body></html>`;
- const a=document.createElement("a");
- a.href=URL.createObjectURL(new Blob([html],{type:"text/html"}));
- a.download="htmlx-app.html";
- a.click();
-}
-
-/* ===================================================
-   START
-=================================================== */
-UI.show("feed");
+        setTimeout(() => {
+            const frame = document.getElementById('frame-' + data.id);
+            const doc = frame.contentWindow.document;
+            doc.open(); doc.write(data.html); doc.close();
+        }, 150);
+    }
 </script>
-
 </body>
 </html>
