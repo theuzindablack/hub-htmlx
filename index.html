@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>HUB HTML - MULTIPLAYER & FEED</title>
+    <title>HUB HTML5 - MODO TUDO-EM-UM</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
@@ -15,9 +15,10 @@
         .glass { background: rgba(15, 23, 42, 0.9); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.1); }
         .btn-host { background: #ffffff; color: #020617; font-weight: 900; }
         .btn-connect { background: #38bdf8; color: #020617; font-weight: 900; }
-        .btn-publish { background: linear-gradient(135deg, #38bdf8 0%, #2563eb 100%); transition: transform 0.2s; }
-        .btn-publish:active { transform: scale(0.95); }
-        iframe { background: white; width: 100%; height: 100%; border: none; border-radius: 2.5rem; min-height: 450px; }
+        .btn-publish { background: linear-gradient(135deg, #38bdf8 0%, #2563eb 100%); transition: all 0.2s; }
+        .btn-publish:active { transform: scale(0.98); }
+        iframe { background: white; width: 100%; height: 100%; border: none; border-radius: 2.5rem; }
+        .fullscreen-view { position: fixed; inset: 0; z-index: 9999; background: white; }
     </style>
 </head>
 <body class="p-4 md:p-8">
@@ -25,145 +26,157 @@
 
     <script type="text/babel">
         const { useState, useEffect, useRef } = React;
+        const ID_SALA_PUBLICA = "SALA_MASTER_HUB";
 
-        const ID_SALA_PUBLICA = "SALA_PUBLICA_2025";
+        // CÓDIGO EXEMPLO QUE MOSTRA HTML + CSS + JS JUNTOS
+        const TEMPLATE_COMPLETO = `<html>
+<head>
+  <style>
+    body { background: #111; color: cyan; text-align: center; padding-top: 50px; }
+    button { padding: 15px; cursor: pointer; border-radius: 10px; border: none; background: cyan; font-weight: bold; }
+  </style>
+</head>
+<body>
+  <h1>TESTE MULTI-CÓDIGO</h1>
+  <button id="btn">CLIQUE PARA TESTAR JS</button>
+
+  <script>
+    document.getElementById('btn').onclick = () => {
+       alert('JS, HTML e CSS funcionando juntos!');
+       document.body.style.background = 'orange';
+    };
+  <\/script>
+</body>
+</html>`;
 
         const App = () => {
-            const [myId, setMyId] = useState(() => localStorage.getItem('hub_id_perm') || '');
+            const [myId, setMyId] = useState(() => localStorage.getItem('hub_id_final') || '');
             const [targetId, setTargetId] = useState(ID_SALA_PUBLICA);
             const [role, setRole] = useState("OFFLINE");
-            const [code, setCode] = useState("<h1>HUB HTML</h1><p>Pronto para publicar!</p>");
+            const [code, setCode] = useState(TEMPLATE_COMPLETO);
             const [posts, setPosts] = useState([]);
+            const [fullView, setFullView] = useState(null);
             
             const peerRef = useRef(null);
-            const conns = useRef([]);
+            const connections = useRef([]);
 
             useEffect(() => {
                 const p = myId ? new Peer(myId) : new Peer();
                 peerRef.current = p;
                 p.on('open', id => {
-                    if(!myId) { localStorage.setItem('hub_id_perm', id); setMyId(id); }
+                    if(!myId) { localStorage.setItem('hub_id_final', id); setMyId(id); }
+                });
+                p.on('connection', (c) => {
+                    connections.current.push(c);
+                    setRole("VOCÊ É O HOST");
+                    c.on('data', data => handleData(data));
                 });
                 return () => p.destroy();
             }, []);
 
-            const setupDataListener = (c) => {
-                c.on('data', data => {
-                    if(data.type === 'SYNC') setCode(data.value);
-                    if(data.type === 'POST') setPosts(prev => [data.value, ...prev]);
-                });
+            const handleData = (data) => {
+                if(data.type === 'SYNC') setCode(data.value);
+                if(data.type === 'POST') setPosts(prev => [data.value, ...prev]);
             };
 
             const virarHost = () => {
                 if(peerRef.current) peerRef.current.destroy();
                 const hostPeer = new Peer(targetId);
                 peerRef.current = hostPeer;
-
                 hostPeer.on('open', () => {
                     setRole("VOCÊ É O HOST");
                     hostPeer.on('connection', (c) => {
-                        conns.current.push(c);
-                        setupDataListener(c);
+                        connections.current.push(c);
+                        c.on('data', data => handleData(data));
                         c.on('open', () => c.send({type: 'SYNC', value: code}));
                     });
-                });
-
-                hostPeer.on('error', () => {
-                    alert("Sala ocupada! Use 'Entrar na Sala'.");
-                    window.location.reload();
                 });
             };
 
             const entrarSala = () => {
                 const c = peerRef.current.connect(targetId);
-                conns.current.push(c);
+                connections.current.push(c);
                 c.on('open', () => {
-                    setRole("CONECTADO AO HOST");
-                    setupDataListener(c);
+                    setRole("CONECTADO");
+                    c.on('data', data => handleData(data));
                 });
             };
 
-            const handleCode = (val) => {
+            const updateCode = (val) => {
                 setCode(val);
-                conns.current.forEach(c => {
-                    if(c.open) c.send({type: 'SYNC', value: val});
-                });
+                connections.current.forEach(c => { if(c.open) c.send({type: 'SYNC', value: val}); });
             };
 
-            const publicarProjeto = () => {
-                const titulo = prompt("Título do Projeto:");
+            const publicar = () => {
+                const titulo = prompt("Título do Projeto Completo:");
                 if(!titulo) return;
-
-                const novoPost = {
-                    id: Date.now(),
-                    titulo: titulo,
-                    autor: myId.substring(0, 5),
-                    preview: code
-                };
-
-                // Adiciona localmente
+                const novoPost = { id: Date.now(), title: titulo, code: code, author: myId.substring(0, 5) };
                 setPosts(prev => [novoPost, ...prev]);
-
-                // Envia para todos na rede
-                conns.current.forEach(c => {
-                    if(c.open) c.send({type: 'POST', value: novoPost});
-                });
+                connections.current.forEach(c => { if(c.open) c.send({type: 'POST', value: novoPost}); });
+                setCode(""); 
             };
 
             return (
                 <div className="max-w-7xl mx-auto space-y-6">
-                    {/* CONTROLES SUPERIORES */}
-                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-                        <div className="glass p-6 rounded-[2rem]">
-                            <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">ID Permanente</span>
-                            <div className="text-sky-400 font-mono font-bold truncate">{myId || "Gerando..."}</div>
+                    {/* TELA CHEIA REAL */}
+                    {fullView && (
+                        <div className="fullscreen-view">
+                            <button onClick={() => setFullView(null)} className="absolute top-6 right-6 bg-red-600 text-white px-8 py-3 rounded-full font-black z-[10000] shadow-2xl">SAIR DA TELA CHEIA [X]</button>
+                            <iframe srcDoc={fullView} sandbox="allow-scripts allow-modals allow-forms allow-same-origin" className="w-full h-full rounded-none"></iframe>
                         </div>
+                    )}
 
-                        <div className="lg:col-span-2 glass p-6 rounded-[2rem] border-sky-500/20 border flex flex-col md:flex-row gap-4 items-center">
-                            <input value={targetId} onChange={e => setTargetId(e.target.value)} className="flex-1 bg-transparent border-b border-white/10 outline-none font-bold text-white text-sm" placeholder="ID da Sala..."/>
+                    {/* TOP BAR */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div className="glass p-6 rounded-[2rem]">
+                            <span className="text-[10px] font-black text-slate-500 uppercase">Seu ID</span>
+                            <div className="text-sky-400 font-mono font-bold truncate">{myId || "..."}</div>
+                        </div>
+                        <div className="md:col-span-2 glass p-6 rounded-[2rem] flex flex-col md:flex-row gap-4 items-center">
+                            <input value={targetId} onChange={e => setTargetId(e.target.value)} className="flex-1 bg-transparent border-b border-white/10 outline-none text-white font-bold" />
                             <div className="flex gap-2 w-full md:w-auto">
-                                <button onClick={virarHost} className="btn-host px-6 py-3 rounded-xl font-black text-[10px] uppercase">Virar Host</button>
-                                <button onClick={entrarSala} className="btn-connect px-6 py-3 rounded-xl font-black text-[10px] uppercase">Entrar na Sala</button>
+                                <button onClick={virarHost} className="btn-host px-6 py-3 rounded-xl font-black text-[10px] uppercase">Host</button>
+                                <button onClick={entrarSala} className="btn-connect px-6 py-3 rounded-xl font-black text-[10px] uppercase">Entrar</button>
                             </div>
                         </div>
                     </div>
 
-                    <div className="flex items-center gap-2 px-2 text-[10px] font-bold uppercase opacity-50">
-                        <div className={`w-2 h-2 rounded-full ${role !== 'OFFLINE' ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`}></div>
-                        Status: {role}
+                    {/* STATUS BOLINHA */}
+                    <div className="flex items-center gap-2 px-2">
+                        <div className={`w-3 h-3 rounded-full ${role === 'OFFLINE' ? 'bg-red-500 shadow-[0_0_10px_red]' : 'bg-green-500 shadow-[0_0_10px_green] animate-pulse'}`}></div>
+                        <span className="text-[10px] font-bold uppercase opacity-50 tracking-widest">Status: {role}</span>
                     </div>
 
-                    {/* EDITOR E PREVIEW */}
+                    {/* EDITOR TUDO EM UM */}
                     <div className="grid lg:grid-cols-2 gap-8 items-start">
                         <div className="space-y-4">
-                            <textarea 
-                                value={code} 
-                                onChange={e => handleCode(e.target.value)}
-                                className="w-full h-[450px] bg-slate-900/60 p-8 rounded-[3rem] border border-white/5 outline-none font-mono text-xs text-sky-300 shadow-inner"
-                                placeholder="Desenvolva seu HTML aqui..."
-                            />
-                            <button onClick={publicarProjeto} className="w-full btn-publish py-6 rounded-[2rem] text-white font-black text-xl uppercase tracking-tighter shadow-2xl">
-                                🚀 PUBLICAR NO FEED
-                            </button>
+                            <textarea value={code} onChange={e => updateCode(e.target.value)} className="w-full h-[450px] bg-slate-900/60 p-8 rounded-[3rem] border border-white/5 outline-none font-mono text-xs text-sky-300" placeholder="Cole aqui seu HTML com <style> e <script> juntos..." />
+                            <button onClick={publicar} className="w-full btn-publish py-6 rounded-[2rem] text-white font-black text-xl uppercase shadow-2xl">🚀 PUBLICAR TUDO NO FEED</button>
                         </div>
-                        <div className="rounded-[3rem] overflow-hidden border-4 border-slate-900 shadow-2xl bg-white h-full min-h-[500px]">
-                            <iframe srcDoc={code}></iframe>
+                        <div className="relative group rounded-[3rem] overflow-hidden border-4 border-slate-900 shadow-2xl bg-white h-[500px]">
+                            <button onClick={() => setFullView(code)} className="absolute top-6 right-6 bg-sky-500 text-slate-950 p-4 rounded-2xl z-10 opacity-0 group-hover:opacity-100 transition-all shadow-xl">
+                                <i data-lucide="maximize"></i>
+                            </button>
+                            <iframe srcDoc={code} sandbox="allow-scripts allow-modals allow-same-origin"></iframe>
                         </div>
                     </div>
 
-                    {/* GALERIA DE POSTAGENS */}
-                    <section className="pt-12 pb-20">
-                        <h2 className="text-center text-slate-500 font-black uppercase tracking-[0.4em] mb-10 text-xs">Projetos Publicados</h2>
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                    {/* FEED DE PROJETOS COMPLETOS */}
+                    <section className="py-20">
+                        <h2 className="text-center text-slate-500 font-black uppercase mb-10 text-[10px] tracking-[0.5em]">Feed Master (HTML+CSS+JS)</h2>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
                             {posts.map(p => (
-                                <div key={p.id} className="glass p-6 rounded-[2.5rem] border border-white/5 hover:border-sky-500/30 transition-all">
+                                <div key={p.id} className="glass p-6 rounded-[2.5rem] border border-white/5 group">
                                     <div className="flex justify-between items-center mb-4">
-                                        <span className="text-[9px] font-bold text-slate-500 uppercase">Dev: ID_{p.autor}</span>
-                                        <button onClick={() => setCode(p.preview)} className="text-[10px] font-black text-sky-400 uppercase bg-sky-500/10 px-3 py-1 rounded-full">Clonar</button>
+                                        <span className="text-[9px] font-bold text-slate-500 uppercase italic">Dev: ID_{p.author}</span>
+                                        <div className="flex gap-2">
+                                            <button onClick={() => setFullView(p.code)} className="p-2 bg-sky-500/10 text-sky-400 rounded-lg hover:bg-sky-400 hover:text-white transition-all"><i data-lucide="eye" className="w-4"></i></button>
+                                            <button onClick={() => setCode(p.code)} className="p-2 bg-sky-500/10 text-sky-400 rounded-lg hover:bg-sky-400 hover:text-white transition-all"><i data-lucide="copy" className="w-4"></i></button>
+                                        </div>
                                     </div>
-                                    <h3 className="font-black text-lg mb-4 truncate uppercase tracking-tight">{p.titulo}</h3>
-                                    <div className="h-40 rounded-2xl overflow-hidden bg-white/5 pointer-events-none border border-white/5">
-                                        <iframe srcDoc={p.preview} className="scale-50 origin-top-left w-[200%] h-[200%]"></iframe>
+                                    <h3 className="font-black text-lg mb-4 truncate uppercase">{p.title}</h3>
+                                    <div className="h-40 rounded-2xl overflow-hidden bg-white/5 pointer-events-none relative border border-white/5">
+                                        <iframe srcDoc={p.code} sandbox="allow-scripts allow-same-origin" className="scale-50 origin-top-left w-[200%] h-[200%]"></iframe>
                                     </div>
                                 </div>
                             ))}
